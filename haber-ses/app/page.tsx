@@ -15,7 +15,6 @@ interface HistoryItem {
   id: string;
   title: string;
   text: string;
-  audioBase64: string;
   savedAt: string;
 }
 
@@ -23,89 +22,79 @@ function formatText(r: NewsResult): string {
   return `* BAŞLIK:\n${r.title}\n\n* ÖZET:\n${r.summary}\n\n* İÇERİK:\n${r.content}\n\n* TARİH:\n${r.date}\n\n* LİNK:\n${r.link}`;
 }
 
-// ─── Ses oynatıcı ────────────────────────────────────────────────────────────
-function AudioPlayer({ audioBase64 }: { audioBase64: string }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [playing, setPlaying] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
+// ─── Web Speech API oynatıcı ─────────────────────────────────────────────────
+function SpeechPlayer({ text }: { text: string }) {
+  const [speaking, setSpeaking] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const uttRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
-    if (!audioBase64) return;
-    const binary = atob(audioBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-    setBlobUrl(url);
-    setPlaying(false);
-    setProgress(0);
-    return () => URL.revokeObjectURL(url);
-  }, [audioBase64]);
+    return () => { window.speechSynthesis?.cancel(); };
+  }, []);
 
-  function togglePlay() {
-    const a = audioRef.current;
-    if (!a) return;
-    if (playing) { a.pause(); setPlaying(false); } else { a.play(); setPlaying(true); }
+  function speak() {
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'tr-TR';
+    utt.rate = 0.92;
+    utt.pitch = 1;
+    utt.onstart = () => { setSpeaking(true); setPaused(false); };
+    utt.onend = () => { setSpeaking(false); setPaused(false); };
+    utt.onerror = () => { setSpeaking(false); setPaused(false); };
+    uttRef.current = utt;
+    window.speechSynthesis.speak(utt);
   }
+
+  function pause() {
+    window.speechSynthesis.pause();
+    setPaused(true);
+  }
+
+  function resume() {
+    window.speechSynthesis.resume();
+    setPaused(false);
+  }
+
   function stop() {
-    const a = audioRef.current;
-    if (!a) return;
-    a.pause(); a.currentTime = 0; setPlaying(false); setProgress(0);
+    window.speechSynthesis.cancel();
+    setSpeaking(false);
+    setPaused(false);
   }
-  function fmt(s: number) {
-    if (!s || isNaN(s)) return '0:00';
-    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
-  }
-
-  if (!blobUrl) return (
-    <div className="flex items-center gap-3 text-gray-500 text-sm py-2 px-1">
-      <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
-      </svg>
-      Audio Player
-      <span className="ml-auto">0:00 / 0:00</span>
-    </div>
-  );
 
   return (
-    <div className="flex items-center gap-3">
-      <audio
-        ref={audioRef}
-        src={blobUrl}
-        onTimeUpdate={() => {
-          const a = audioRef.current;
-          if (a) setProgress(a.duration ? (a.currentTime / a.duration) * 100 : 0);
-        }}
-        onLoadedMetadata={() => audioRef.current && setDuration(audioRef.current.duration)}
-        onEnded={() => { setPlaying(false); setProgress(0); }}
-      />
+    <div className="flex items-center gap-2 border-t border-gray-800 pt-3">
       <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
       </svg>
-      <button onClick={togglePlay} className="w-8 h-8 flex items-center justify-center bg-green-500 hover:bg-green-400 rounded-full transition-colors flex-shrink-0">
-        {playing
-          ? <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-          : <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-        }
-      </button>
-      <button onClick={stop} className="w-8 h-8 flex items-center justify-center bg-red-500/30 hover:bg-red-500/50 rounded-full transition-colors flex-shrink-0">
-        <svg className="w-3.5 h-3.5 text-red-300" fill="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
-      </button>
-      <div className="flex-1">
-        <input
-          type="range" min={0} max={100} value={progress}
-          onChange={e => {
-            const a = audioRef.current;
-            if (a) { a.currentTime = (Number(e.target.value) / 100) * a.duration; setProgress(Number(e.target.value)); }
-          }}
-          className="w-full h-1.5 rounded-full appearance-none bg-gray-600 accent-green-500 cursor-pointer"
-        />
-      </div>
-      <span className="text-xs text-gray-400 flex-shrink-0 tabular-nums">
-        {fmt((progress / 100) * duration)} / {fmt(duration)}
+
+      <span className="text-xs text-gray-400 flex-1">
+        {!speaking && !paused ? 'Hazır' : paused ? 'Duraklatıldı' : 'Oynatılıyor...'}
       </span>
+
+      {!speaking && !paused && (
+        <button onClick={speak}
+          className="w-8 h-8 flex items-center justify-center bg-green-600 hover:bg-green-500 rounded-full transition-colors">
+          <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
+        </button>
+      )}
+      {speaking && !paused && (
+        <button onClick={pause}
+          className="w-8 h-8 flex items-center justify-center bg-yellow-600 hover:bg-yellow-500 rounded-full transition-colors">
+          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+        </button>
+      )}
+      {paused && (
+        <button onClick={resume}
+          className="w-8 h-8 flex items-center justify-center bg-green-600 hover:bg-green-500 rounded-full transition-colors">
+          <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
+        </button>
+      )}
+      {(speaking || paused) && (
+        <button onClick={stop}
+          className="w-8 h-8 flex items-center justify-center bg-red-600/60 hover:bg-red-600 rounded-full transition-colors">
+          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -116,18 +105,13 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Metin geçmişi (undo/redo)
   const [textHistory, setTextHistory] = useState<string[]>(['']);
   const [histIdx, setHistIdx] = useState(0);
   const text = textHistory[histIdx] ?? '';
 
-  // Ses
-  const [audioBase64, setAudioBase64] = useState('');
-  const [audioLoading, setAudioLoading] = useState(false);
-  const [audioError, setAudioError] = useState('');
-  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  const [showSpeech, setShowSpeech] = useState(false);
+  const [speechText, setSpeechText] = useState('');
 
-  // Geçmiş
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -139,34 +123,21 @@ export default function Home() {
     } catch { /**/ }
   }, []);
 
-  // AudioBase64 → blob URL
-  useEffect(() => {
-    if (!audioBase64) { setAudioBlobUrl(null); return; }
-    const binary = atob(audioBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-    setAudioBlobUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [audioBase64]);
-
   function setText(val: string) {
     setTextHistory(prev => {
       const cut = prev.slice(0, histIdx + 1);
-      return [...cut, val].slice(-50); // max 50 undo
+      return [...cut, val].slice(-50);
     });
     setHistIdx(prev => Math.min(prev + 1, 49));
   }
   function undo() { if (histIdx > 0) setHistIdx(h => h - 1); }
   function redo() { if (histIdx < textHistory.length - 1) setHistIdx(h => h + 1); }
 
-  const saveToHistory = useCallback((title: string, t: string, audio: string) => {
+  const saveToHistory = useCallback((title: string, t: string) => {
     const item: HistoryItem = {
       id: Date.now().toString(),
       title,
       text: t,
-      audioBase64: audio,
       savedAt: new Date().toLocaleString('tr-TR'),
     };
     setHistory(prev => {
@@ -181,8 +152,8 @@ export default function Home() {
     if (!url.trim()) return;
     setLoading(true);
     setError(null);
-    setAudioBase64('');
-    setAudioError('');
+    setShowSpeech(false);
+    window.speechSynthesis?.cancel();
     try {
       const res = await fetch('/api/process', {
         method: 'POST',
@@ -195,7 +166,6 @@ export default function Home() {
       const formatted = formatText(result);
       setTextHistory([formatted]);
       setHistIdx(0);
-      if (result.audioBase64) setAudioBase64(result.audioBase64);
     } catch {
       setError('Sunucuya bağlanılamadı.');
     } finally {
@@ -203,35 +173,18 @@ export default function Home() {
     }
   }
 
-  async function handleGenerateAudio() {
-    // ÖZET bölümünü bul, yoksa tüm metni kullan
-    const match = text.match(/\* ÖZET:\s*\n([\s\S]*?)(?=\n\*|$)/);
+  function handleGenerateAudio() {
+    const match = text.match(/\* ÖZET:\s*\n([\s\S]*?)(?=\n\*\s|$)/);
     const ttsText = match ? match[1].trim() : text.trim();
     if (!ttsText) return;
-
-    setAudioLoading(true);
-    setAudioError('');
-    setAudioBase64('');
-    try {
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: ttsText }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setAudioError(data.error || 'Ses oluşturulamadı.'); return; }
-      setAudioBase64(data.audioBase64);
-    } catch {
-      setAudioError('Ses servisi bağlanamadı.');
-    } finally {
-      setAudioLoading(false);
-    }
+    setSpeechText(ttsText);
+    setShowSpeech(true);
   }
 
   function handleSave() {
     const titleMatch = text.match(/\* BAŞLIK:\s*\n(.+)/);
     const title = titleMatch ? titleMatch[1].trim() : '(Başlıksız)';
-    saveToHistory(title, text, audioBase64);
+    saveToHistory(title, text);
   }
 
   async function handleCopy() {
@@ -247,8 +200,9 @@ export default function Home() {
   function loadFromHistory(item: HistoryItem) {
     setTextHistory([item.text]);
     setHistIdx(0);
-    setAudioBase64(item.audioBase64 || '');
     setShowHistory(false);
+    setShowSpeech(false);
+    window.speechSynthesis?.cancel();
     setError(null);
   }
 
@@ -260,15 +214,12 @@ export default function Home() {
     <main className="min-h-screen bg-gray-950 text-gray-100 flex flex-col">
       <div className="max-w-3xl w-full mx-auto px-4 py-6 flex flex-col gap-4 flex-1">
 
-        {/* Header + URL formu */}
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h1 className="text-xl font-bold">Haber Ses</h1>
             {history.length > 0 && (
-              <button
-                onClick={() => setShowHistory(v => !v)}
-                className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
-              >
+              <button onClick={() => setShowHistory(v => !v)}
+                className="text-xs text-gray-400 hover:text-gray-200 bg-gray-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
@@ -304,15 +255,11 @@ export default function Home() {
               required
               className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
             />
-            <button
-              type="submit"
-              disabled={loading || !url.trim()}
-              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl px-6 py-3 transition-colors flex items-center gap-2 flex-shrink-0"
-            >
+            <button type="submit" disabled={loading || !url.trim()}
+              className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl px-6 py-3 transition-colors flex items-center gap-2 flex-shrink-0">
               {loading
                 ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />İşleniyor</>
-                : 'İşle'
-              }
+                : 'İşle'}
             </button>
           </form>
         </div>
@@ -328,7 +275,6 @@ export default function Home() {
 
         {hasText && !loading && (
           <>
-            {/* Metin paneli */}
             <textarea
               value={text}
               onChange={e => setText(e.target.value)}
@@ -337,7 +283,6 @@ export default function Home() {
               spellCheck={false}
             />
 
-            {/* İstatistikler */}
             <div className="flex justify-center gap-8 py-1">
               <div className="text-center">
                 <p className="text-2xl font-bold text-blue-400">{charCount.toLocaleString('tr-TR')}</p>
@@ -349,7 +294,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Aksiyon butonları */}
             <div className="flex flex-wrap gap-2 justify-center">
               <button onClick={undo} disabled={histIdx === 0}
                 className="flex items-center gap-1.5 px-4 py-2.5 bg-yellow-600/80 hover:bg-yellow-500/80 disabled:opacity-40 text-white text-sm font-medium rounded-xl transition-colors">
@@ -373,28 +317,18 @@ export default function Home() {
                   : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>Kopyala</>
                 }
               </button>
-              <button onClick={handleGenerateAudio} disabled={audioLoading}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-pink-700 hover:bg-pink-600 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors">
-                {audioLoading
-                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Oluşturuluyor...</>
-                  : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M12 9.5v5m0 0a3 3 0 100-6 3 3 0 000 6zm6.364-8.364a9 9 0 010 12.728" /></svg>Ses Oluştur</>
-                }
+              <button onClick={handleGenerateAudio}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-pink-700 hover:bg-pink-600 text-white text-sm font-medium rounded-xl transition-colors">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M12 9.5v5m0 0a3 3 0 100-6 3 3 0 000 6zm6.364-8.364a9 9 0 010 12.728" />
+                </svg>
+                Ses Oluştur
               </button>
-              {audioBlobUrl && (
-                <a href={audioBlobUrl} download="haber.mp3"
-                  className="flex items-center gap-1.5 px-4 py-2.5 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-xl transition-colors">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" /></svg>
-                  Ses Kopyala/İndir
-                </a>
-              )}
             </div>
 
-            {audioError && <p className="text-xs text-red-400 text-center">{audioError}</p>}
-
-            {/* Audio player */}
-            <div className="border-t border-gray-800 pt-3">
-              <AudioPlayer audioBase64={audioBase64} />
-            </div>
+            {showSpeech && speechText && (
+              <SpeechPlayer text={speechText} />
+            )}
           </>
         )}
       </div>
