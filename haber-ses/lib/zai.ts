@@ -10,8 +10,8 @@ export interface FormattedArticle {
 }
 
 const client = new OpenAI({
-  baseURL: 'https://api.z.ai/api/paas/v4',
-  apiKey: process.env.ZAI_API_KEY,
+  baseURL: 'https://api.groq.com/openai/v1',
+  apiKey: process.env.GROQ_API_KEY,
 });
 
 const SYSTEM_PROMPT = `Sen bir haber editörüsün. Verilen haber metnini belirtilen formatta düzenleyeceksin.`;
@@ -71,7 +71,7 @@ function parseSection(text: string, sectionName: string, nextSectionName?: strin
 
 export async function formatArticle(article: ScrapedArticle): Promise<FormattedArticle> {
   const response = await client.chat.completions.create({
-    model: 'glm-4-flash',
+    model: 'llama-3.3-70b-versatile',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: buildUserPrompt(article) },
