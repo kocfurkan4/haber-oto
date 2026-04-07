@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { textToSpeechBase64 } from '@/lib/elevenlabs';
+import { textToSpeechBase64 } from '@/lib/tts';
 
 export const maxDuration = 30;
 
@@ -14,10 +14,6 @@ export async function POST(request: NextRequest) {
 
   if (!text) {
     return NextResponse.json({ error: 'Metin gerekli.' }, { status: 400 });
-  }
-
-  if (!process.env.ELEVENLABS_API_KEY) {
-    return NextResponse.json({ error: 'ElevenLabs API key ayarlanmamış.' }, { status: 500 });
   }
 
   try {

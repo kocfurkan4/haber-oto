@@ -22,78 +22,93 @@ function formatText(r: NewsResult): string {
   return `* BAŞLIK:\n${r.title}\n\n* ÖZET:\n${r.summary}\n\n* İÇERİK:\n${r.content}\n\n* TARİH:\n${r.date}\n\n* LİNK:\n${r.link}`;
 }
 
-// ─── Web Speech API oynatıcı ─────────────────────────────────────────────────
-function SpeechPlayer({ text }: { text: string }) {
-  const [speaking, setSpeaking] = useState(false);
-  const [paused, setPaused] = useState(false);
-  const uttRef = useRef<SpeechSynthesisUtterance | null>(null);
+// ─── Audio Player ─────────────────────────────────────────────────────────────
+function AudioPlayer({ audioBase64 }: { audioBase64: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   useEffect(() => {
-    return () => { window.speechSynthesis?.cancel(); };
-  }, []);
+    if (!audioBase64) return;
+    const binary = atob(audioBase64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'audio/mp3' });
+    const url = URL.createObjectURL(blob);
+    setBlobUrl(url);
+    setPlaying(false);
+    setProgress(0);
+    return () => URL.revokeObjectURL(url);
+  }, [audioBase64]);
 
-  function speak() {
-    window.speechSynthesis.cancel();
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.lang = 'tr-TR';
-    utt.rate = 0.92;
-    utt.pitch = 1;
-    utt.onstart = () => { setSpeaking(true); setPaused(false); };
-    utt.onend = () => { setSpeaking(false); setPaused(false); };
-    utt.onerror = () => { setSpeaking(false); setPaused(false); };
-    uttRef.current = utt;
-    window.speechSynthesis.speak(utt);
+  function togglePlay() {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); } else { a.play(); setPlaying(true); }
   }
-
-  function pause() {
-    window.speechSynthesis.pause();
-    setPaused(true);
-  }
-
-  function resume() {
-    window.speechSynthesis.resume();
-    setPaused(false);
-  }
-
   function stop() {
-    window.speechSynthesis.cancel();
-    setSpeaking(false);
-    setPaused(false);
+    const a = audioRef.current;
+    if (!a) return;
+    a.pause(); a.currentTime = 0; setPlaying(false); setProgress(0);
+  }
+  function fmt(s: number) {
+    if (!s || isNaN(s)) return '0:00';
+    return `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
   }
 
   return (
     <div className="flex items-center gap-2 border-t border-gray-800 pt-3">
+      <audio
+        ref={audioRef}
+        src={blobUrl || ''}
+        onTimeUpdate={() => {
+          const a = audioRef.current;
+          if (a) setProgress(a.duration ? (a.currentTime / a.duration) * 100 : 0);
+        }}
+        onLoadedMetadata={() => audioRef.current && setDuration(audioRef.current.duration)}
+        onEnded={() => { setPlaying(false); setProgress(0); }}
+      />
+
       <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
       </svg>
 
-      <span className="text-xs text-gray-400 flex-1">
-        {!speaking && !paused ? 'Hazır' : paused ? 'Duraklatıldı' : 'Oynatılıyor...'}
+      <button onClick={togglePlay} disabled={!blobUrl}
+        className="w-8 h-8 flex items-center justify-center bg-green-600 hover:bg-green-500 disabled:opacity-40 rounded-full transition-colors flex-shrink-0">
+        {playing
+          ? <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+          : <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
+        }
+      </button>
+
+      <button onClick={stop} disabled={!blobUrl}
+        className="w-8 h-8 flex items-center justify-center bg-red-600/50 hover:bg-red-600 disabled:opacity-40 rounded-full transition-colors flex-shrink-0">
+        <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
+      </button>
+
+      <div className="flex-1">
+        <input type="range" min={0} max={100} value={progress} disabled={!blobUrl}
+          onChange={e => {
+            const a = audioRef.current;
+            if (a) { a.currentTime = (Number(e.target.value) / 100) * a.duration; setProgress(Number(e.target.value)); }
+          }}
+          className="w-full h-1.5 rounded-full appearance-none bg-gray-700 accent-green-500 cursor-pointer disabled:cursor-not-allowed"
+        />
+      </div>
+
+      <span className="text-xs text-gray-400 flex-shrink-0 tabular-nums w-20 text-right">
+        {blobUrl ? `${fmt((progress / 100) * duration)} / ${fmt(duration)}` : '0:00 / 0:00'}
       </span>
 
-      {!speaking && !paused && (
-        <button onClick={speak}
-          className="w-8 h-8 flex items-center justify-center bg-green-600 hover:bg-green-500 rounded-full transition-colors">
-          <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-        </button>
-      )}
-      {speaking && !paused && (
-        <button onClick={pause}
-          className="w-8 h-8 flex items-center justify-center bg-yellow-600 hover:bg-yellow-500 rounded-full transition-colors">
-          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
-        </button>
-      )}
-      {paused && (
-        <button onClick={resume}
-          className="w-8 h-8 flex items-center justify-center bg-green-600 hover:bg-green-500 rounded-full transition-colors">
-          <svg className="w-3.5 h-3.5 text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21" /></svg>
-        </button>
-      )}
-      {(speaking || paused) && (
-        <button onClick={stop}
-          className="w-8 h-8 flex items-center justify-center bg-red-600/60 hover:bg-red-600 rounded-full transition-colors">
-          <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" /></svg>
-        </button>
+      {blobUrl && (
+        <a href={blobUrl} download="haber.mp3"
+          className="w-8 h-8 flex items-center justify-center bg-gray-700 hover:bg-gray-600 rounded-full transition-colors flex-shrink-0" title="İndir">
+          <svg className="w-3.5 h-3.5 text-gray-300" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+          </svg>
+        </a>
       )}
     </div>
   );
@@ -109,8 +124,9 @@ export default function Home() {
   const [histIdx, setHistIdx] = useState(0);
   const text = textHistory[histIdx] ?? '';
 
-  const [showSpeech, setShowSpeech] = useState(false);
-  const [speechText, setSpeechText] = useState('');
+  const [audioBase64, setAudioBase64] = useState('');
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [audioError, setAudioError] = useState('');
 
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [showHistory, setShowHistory] = useState(false);
@@ -152,8 +168,8 @@ export default function Home() {
     if (!url.trim()) return;
     setLoading(true);
     setError(null);
-    setShowSpeech(false);
-    window.speechSynthesis?.cancel();
+    setAudioBase64('');
+    setAudioError('');
     try {
       const res = await fetch('/api/process', {
         method: 'POST',
@@ -173,12 +189,27 @@ export default function Home() {
     }
   }
 
-  function handleGenerateAudio() {
+  async function handleGenerateAudio() {
     const match = text.match(/\* ÖZET:\s*\n([\s\S]*?)(?=\n\*\s|$)/);
     const ttsText = match ? match[1].trim() : text.trim();
     if (!ttsText) return;
-    setSpeechText(ttsText);
-    setShowSpeech(true);
+    setAudioLoading(true);
+    setAudioError('');
+    setAudioBase64('');
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: ttsText }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAudioError(data.error || 'Ses oluşturulamadı.'); return; }
+      setAudioBase64(data.audioBase64);
+    } catch {
+      setAudioError('Ses servisi bağlanamadı.');
+    } finally {
+      setAudioLoading(false);
+    }
   }
 
   function handleSave() {
@@ -195,15 +226,6 @@ export default function Home() {
     }
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }
-
-  function loadFromHistory(item: HistoryItem) {
-    setTextHistory([item.text]);
-    setHistIdx(0);
-    setShowHistory(false);
-    setShowSpeech(false);
-    window.speechSynthesis?.cancel();
-    setError(null);
   }
 
   const charCount = text.length;
@@ -232,12 +254,18 @@ export default function Home() {
             <div className="bg-gray-800 rounded-xl p-3 flex flex-col gap-1.5 max-h-52 overflow-y-auto">
               {history.map(item => (
                 <div key={item.id} className="flex items-center gap-2 group">
-                  <button onClick={() => loadFromHistory(item)} className="flex-1 text-left bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-2 transition-colors">
+                  <button onClick={() => {
+                    setTextHistory([item.text]); setHistIdx(0);
+                    setAudioBase64(''); setShowHistory(false); setError(null);
+                  }} className="flex-1 text-left bg-gray-700 hover:bg-gray-600 rounded-lg px-3 py-2 transition-colors">
                     <p className="text-xs text-gray-200 font-medium truncate">{item.title}</p>
                     <p className="text-xs text-gray-500">{item.savedAt}</p>
                   </button>
-                  <button onClick={() => setHistory(prev => { const u = prev.filter(h => h.id !== item.id); try { localStorage.setItem('haber-history', JSON.stringify(u)); } catch { /**/ } return u; })}
-                    className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all">
+                  <button onClick={() => setHistory(prev => {
+                    const u = prev.filter(h => h.id !== item.id);
+                    try { localStorage.setItem('haber-history', JSON.stringify(u)); } catch { /**/ }
+                    return u;
+                  })} className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 transition-all">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
                 </div>
@@ -246,20 +274,12 @@ export default function Home() {
           )}
 
           <form onSubmit={handleProcess} className="flex gap-2">
-            <input
-              type="url"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              placeholder="https://gdh.digital/haber/..."
-              disabled={loading}
-              required
-              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50"
-            />
+            <input type="url" value={url} onChange={e => setUrl(e.target.value)}
+              placeholder="https://gdh.digital/haber/..." disabled={loading} required
+              className="flex-1 bg-gray-800 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-50" />
             <button type="submit" disabled={loading || !url.trim()}
               className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold text-sm rounded-xl px-6 py-3 transition-colors flex items-center gap-2 flex-shrink-0">
-              {loading
-                ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />İşleniyor</>
-                : 'İşle'}
+              {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />İşleniyor</> : 'İşle'}
             </button>
           </form>
         </div>
@@ -275,13 +295,9 @@ export default function Home() {
 
         {hasText && !loading && (
           <>
-            <textarea
-              value={text}
-              onChange={e => setText(e.target.value)}
-              rows={18}
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={18}
               className="w-full bg-gray-900 border border-gray-700 rounded-xl p-4 text-sm text-gray-100 leading-relaxed resize-none focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              spellCheck={false}
-            />
+              spellCheck={false} />
 
             <div className="flex justify-center gap-8 py-1">
               <div className="text-center">
@@ -317,18 +333,18 @@ export default function Home() {
                   : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg>Kopyala</>
                 }
               </button>
-              <button onClick={handleGenerateAudio}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-pink-700 hover:bg-pink-600 text-white text-sm font-medium rounded-xl transition-colors">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M12 9.5v5m0 0a3 3 0 100-6 3 3 0 000 6zm6.364-8.364a9 9 0 010 12.728" />
-                </svg>
-                Ses Oluştur
+              <button onClick={handleGenerateAudio} disabled={audioLoading}
+                className="flex items-center gap-1.5 px-4 py-2.5 bg-pink-700 hover:bg-pink-600 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-colors">
+                {audioLoading
+                  ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Oluşturuluyor...</>
+                  : <><svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M15.536 8.464a5 5 0 010 7.072M12 9.5v5m0 0a3 3 0 100-6 3 3 0 000 6zm6.364-8.364a9 9 0 010 12.728" /></svg>Ses Oluştur</>
+                }
               </button>
             </div>
 
-            {showSpeech && speechText && (
-              <SpeechPlayer text={speechText} />
-            )}
+            {audioError && <p className="text-xs text-red-400 text-center">{audioError}</p>}
+
+            <AudioPlayer audioBase64={audioBase64} />
           </>
         )}
       </div>
