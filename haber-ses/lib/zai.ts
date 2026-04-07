@@ -71,7 +71,7 @@ function parseSection(text: string, sectionName: string, nextSectionName?: strin
 
 export async function formatArticle(article: ScrapedArticle): Promise<FormattedArticle> {
   const response = await client.chat.completions.create({
-    model: 'glm-4-flash',
+    model: 'glm-4.5-air',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: buildUserPrompt(article) },
