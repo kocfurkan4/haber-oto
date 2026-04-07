@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeArticle } from '@/lib/scraper';
 import { formatArticle } from '@/lib/zai';
-import { textToSpeechBase64 } from '@/lib/elevenlabs';
 
 export const maxDuration = 60;
 
@@ -32,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 422 });
   }
 
-  // 2. Z.ai ile formatla
+  // 2. Groq ile formatla
   let formatted;
   try {
     formatted = await formatArticle(scraped);
@@ -41,23 +40,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  // 3. ElevenLabs ile seslendir (sadece ÖZET)
-  let audioBase64 = '';
-  if (formatted.summary && process.env.ELEVENLABS_API_KEY) {
-    try {
-      audioBase64 = await textToSpeechBase64(formatted.summary);
-    } catch (err) {
-      console.error('ElevenLabs hatası:', err);
-      // Ses üretilemese de metin döndür
-    }
-  }
-
   return NextResponse.json({
     title: formatted.title,
     summary: formatted.summary,
     content: formatted.content,
     date: formatted.date,
     link: formatted.link,
-    audioBase64,
+    audioBase64: '',
   });
 }
